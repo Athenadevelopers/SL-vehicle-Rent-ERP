@@ -1,30 +1,77 @@
-# Sri Lanka ERP System
+# Sri Lanka Vehicle Rental ERP System
 
-*Automatically synced with your [v0.dev](https://v0.dev) deployments*
+A comprehensive vehicle rental management system built with Next.js, Firebase, and shadcn/ui.
 
-[![Deployed on Vercel](https://img.shields.io/badge/Deployed%20on-Vercel-black?style=for-the-badge&logo=vercel)](https://vercel.com/sahan-weerasinghes-projects/v0-sri-lanka-erp-system)
-[![Built with v0](https://img.shields.io/badge/Built%20with-v0.dev-black?style=for-the-badge)](https://v0.dev/chat/projects/e0Tq9DwQ6Fn)
+## Features
 
-## Overview
+- Vehicle management
+- Booking system
+- Customer management
+- Payment processing
+- Reports and analytics
+- Admin dashboard
+- Mobile responsive design
+- Invoice generation
+- Vehicle maintenance scheduler
 
-This repository will stay in sync with your deployed chats on [v0.dev](https://v0.dev).
-Any changes you make to your deployed app will be automatically pushed to this repository from [v0.dev](https://v0.dev).
+## Tech Stack
+
+- Next.js 14 (App Router)
+- Firebase (Authentication & Firestore)
+- Tailwind CSS
+- shadcn/ui Components
+- TypeScript
 
 ## Deployment
 
-Your project is live at:
+This project is configured for easy deployment to Vercel or GitHub Pages.
 
-**[https://vercel.com/sahan-weerasinghes-projects/v0-sri-lanka-erp-system](https://vercel.com/sahan-weerasinghes-projects/v0-sri-lanka-erp-system)**
+## Getting Started
 
-## Build your app
+1. Clone the repository
+2. Install dependencies: `npm install`
+3. Set up Firebase configuration
+4. Run the development server: `npm run dev`
 
-Continue building your app on:
+## License
 
-**[https://v0.dev/chat/projects/e0Tq9DwQ6Fn](https://v0.dev/chat/projects/e0Tq9DwQ6Fn)**
+This project is licensed under the MIT License.
+\`\`\`
 
-## How It Works
+Let's also create a simple .gitignore file:
 
-1. Create and modify your project using [v0.dev](https://v0.dev)
-2. Deploy your chats from the v0 interface
-3. Changes are automatically pushed to this repository
-4. Vercel deploys the latest version from this repository
+```text file=".gitignore"
+# dependencies
+/node_modules
+/.pnp
+.pnp.js
+
+# testing
+/coverage
+
+# next.js
+/.next/
+/out/
+
+# production
+/build
+
+# misc
+.DS_Store
+*.pem
+
+# debug
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+
+# local env files
+.env*.local
+.env
+
+# vercel
+.vercel
+
+# typescript
+*.tsbuildinfo
+next-env.d.ts
