@@ -1,4 +1,4 @@
-import { db, rtdb, storage } from "./firebase"
+import { rtdb, storage } from "./firebase"
 import {
   collection,
   doc,
@@ -12,9 +12,11 @@ import {
   serverTimestamp,
   onSnapshot,
   Timestamp,
+  where,
 } from "firebase/firestore"
 import { ref, uploadBytes, getDownloadURL } from "firebase/storage"
 import { ref as rtdbRef, get, set } from "firebase/database"
+import { getFirebaseFirestore } from "./firebase"
 
 // Types
 export interface Vehicle {
@@ -84,38 +86,30 @@ export interface Payment {
   invoiceNumber: string
 }
 
-// Vehicle Management
-export async function getVehicles() {
-  const vehiclesSnapshot = await getDocs(collection(db, "vehicles"))
-  return vehiclesSnapshot.docs.map((doc) => ({
-    id: doc.id,
-    ...doc.data(),
-  })) as Vehicle[]
+// Helper function to get Firestore instance
+const getDb = () => {
+  const db = getFirebaseFirestore()
+  if (!db) {
+    throw new Error("Firestore is not initialized")
+  }
+  return db
 }
 
-export function subscribeToVehicles(callback: (vehicles: Vehicle[]) => void) {
-  const q = query(collection(db, "vehicles"), orderBy("createdAt", "desc"))
-  return onSnapshot(q, (snapshot) => {
-    const vehicles = snapshot.docs.map((doc) => ({
-      id: doc.id,
-      ...doc.data(),
-    })) as Vehicle[]
-    callback(vehicles)
-  })
+// Vehicle Management
+export async function getVehicles() {
+  return await getCollection("vehicles")
+}
+
+export function subscribeToVehicles(callback: (vehicles: any[]) => void) {
+  return subscribeToCollection("vehicles", callback)
 }
 
 export async function getVehicleById(id: string) {
-  const vehicleDoc = await getDoc(doc(db, "vehicles", id))
-  if (vehicleDoc.exists()) {
-    return {
-      id: vehicleDoc.id,
-      ...vehicleDoc.data(),
-    } as Vehicle
-  }
-  return null
+  return await getDocument("vehicles", id)
 }
 
 export async function addVehicle(vehicleData: Partial<Vehicle>) {
+  const db = getDb()
   const vehicleRef = await addDoc(collection(db, "vehicles"), {
     ...vehicleData,
     createdAt: serverTimestamp(),
@@ -125,6 +119,7 @@ export async function addVehicle(vehicleData: Partial<Vehicle>) {
 }
 
 export async function updateVehicle(id: string, vehicleData: Partial<Vehicle>) {
+  const db = getDb()
   await updateDoc(doc(db, "vehicles", id), {
     ...vehicleData,
     updatedAt: serverTimestamp(),
@@ -132,10 +127,12 @@ export async function updateVehicle(id: string, vehicleData: Partial<Vehicle>) {
 }
 
 export async function deleteVehicle(id: string) {
+  const db = getDb()
   await deleteDoc(doc(db, "vehicles", id))
 }
 
 export async function scheduleVehicleMaintenance(id: string, date: Date) {
+  const db = getDb()
   await updateDoc(doc(db, "vehicles", id), {
     nextMaintenance: Timestamp.fromDate(date),
     updatedAt: serverTimestamp(),
@@ -147,6 +144,7 @@ export async function completeVehicleMaintenance(id: string, notes: string) {
   const nextMaintenanceDate = new Date()
   nextMaintenanceDate.setMonth(now.getMonth() + 3) // Schedule next maintenance in 3 months
 
+  const db = getDb()
   await updateDoc(doc(db, "vehicles", id), {
     lastMaintenance: Timestamp.fromDate(now),
     nextMaintenance: Timestamp.fromDate(nextMaintenanceDate),
@@ -158,39 +156,22 @@ export async function completeVehicleMaintenance(id: string, notes: string) {
 
 // Booking Management
 export async function getBookings() {
-  const bookingsSnapshot = await getDocs(query(collection(db, "bookings"), orderBy("createdAt", "desc")))
-  return bookingsSnapshot.docs.map((doc) => ({
-    id: doc.id,
-    ...doc.data(),
-  })) as Booking[]
+  return await getCollection("bookings")
 }
 
-export function subscribeToBookings(callback: (bookings: Booking[]) => void) {
-  const q = query(collection(db, "bookings"), orderBy("createdAt", "desc"))
-  return onSnapshot(q, (snapshot) => {
-    const bookings = snapshot.docs.map((doc) => ({
-      id: doc.id,
-      ...doc.data(),
-    })) as Booking[]
-    callback(bookings)
-  })
+export function subscribeToBookings(callback: (bookings: any[]) => void) {
+  return subscribeToCollection("bookings", callback)
 }
 
 export async function getBookingById(id: string) {
-  const bookingDoc = await getDoc(doc(db, "bookings", id))
-  if (bookingDoc.exists()) {
-    return {
-      id: bookingDoc.id,
-      ...bookingDoc.data(),
-    } as Booking
-  }
-  return null
+  return await getDocument("bookings", id)
 }
 
 export async function addBooking(bookingData: Partial<Booking>) {
   // Generate a booking ID with B prefix and 5 digits
   const bookingId = "B" + Math.floor(10000 + Math.random() * 90000).toString()
 
+  const db = getDb()
   const bookingRef = await addDoc(collection(db, "bookings"), {
     ...bookingData,
     id: bookingId,
@@ -209,6 +190,7 @@ export async function addBooking(bookingData: Partial<Booking>) {
 }
 
 export async function updateBooking(id: string, bookingData: Partial<Booking>) {
+  const db = getDb()
   await updateDoc(doc(db, "bookings", id), {
     ...bookingData,
     updatedAt: serverTimestamp(),
@@ -218,6 +200,7 @@ export async function updateBooking(id: string, bookingData: Partial<Booking>) {
 export async function updateBookingStatus(id: string, status: Booking["status"]) {
   const booking = await getBookingById(id)
 
+  const db = getDb()
   await updateDoc(doc(db, "bookings", id), {
     status,
     updatedAt: serverTimestamp(),
@@ -245,48 +228,32 @@ export async function deleteBooking(id: string) {
 
   // If the booking has an active vehicle, make it available again
   if (booking?.status === "active" && booking?.vehicleId) {
+    const db = getDb()
     await updateDoc(doc(db, "vehicles", booking.vehicleId), {
       status: "available",
       updatedAt: serverTimestamp(),
     })
   }
 
+  const db = getDb()
   await deleteDoc(doc(db, "bookings", id))
 }
 
 // Customer Management
 export async function getCustomers() {
-  const customersQuery = query(collection(db, "customers"), orderBy("createdAt", "desc"))
-  const customersSnapshot = await getDocs(customersQuery)
-  return customersSnapshot.docs.map((doc) => ({
-    id: doc.id,
-    ...doc.data(),
-  })) as Customer[]
+  return await getCollection("customers")
 }
 
-export function subscribeToCustomers(callback: (customers: Customer[]) => void) {
-  const q = query(collection(db, "customers"), orderBy("createdAt", "desc"))
-  return onSnapshot(q, (snapshot) => {
-    const customers = snapshot.docs.map((doc) => ({
-      id: doc.id,
-      ...doc.data(),
-    })) as Customer[]
-    callback(customers)
-  })
+export function subscribeToCustomers(callback: (customers: any[]) => void) {
+  return subscribeToCollection("customers", callback)
 }
 
 export async function getCustomerById(id: string) {
-  const customerDoc = await getDoc(doc(db, "customers", id))
-  if (customerDoc.exists()) {
-    return {
-      id: customerDoc.id,
-      ...customerDoc.data(),
-    } as Customer
-  }
-  return null
+  return await getDocument("customers", id)
 }
 
 export async function addCustomer(customerData: Partial<Customer>) {
+  const db = getDb()
   const customerRef = await addDoc(collection(db, "customers"), {
     ...customerData,
     bookings: [],
@@ -296,6 +263,7 @@ export async function addCustomer(customerData: Partial<Customer>) {
 }
 
 export async function updateCustomer(id: string, customerData: Partial<Customer>) {
+  const db = getDb()
   await updateDoc(doc(db, "customers", id), {
     ...customerData,
     updatedAt: serverTimestamp(),
@@ -303,27 +271,17 @@ export async function updateCustomer(id: string, customerData: Partial<Customer>
 }
 
 export async function deleteCustomer(id: string) {
+  const db = getDb()
   await deleteDoc(doc(db, "customers", id))
 }
 
 // Payment Management
 export async function getPayments() {
-  const paymentsSnapshot = await getDocs(query(collection(db, "payments"), orderBy("date", "desc")))
-  return paymentsSnapshot.docs.map((doc) => ({
-    id: doc.id,
-    ...doc.data(),
-  })) as Payment[]
+  return await getCollection("payments")
 }
 
-export function subscribeToPayments(callback: (payments: Payment[]) => void) {
-  const q = query(collection(db, "payments"), orderBy("date", "desc"))
-  return onSnapshot(q, (snapshot) => {
-    const payments = snapshot.docs.map((doc) => ({
-      id: doc.id,
-      ...doc.data(),
-    })) as Payment[]
-    callback(payments)
-  })
+export function subscribeToPayments(callback: (payments: any[]) => void) {
+  return subscribeToCollection("payments", callback)
 }
 
 export async function addPayment(paymentData: Partial<Payment>) {
@@ -331,6 +289,7 @@ export async function addPayment(paymentData: Partial<Payment>) {
   const year = new Date().getFullYear()
   const invoiceNumber = `INV-${year}-${Math.floor(1000 + Math.random() * 9000).toString()}`
 
+  const db = getDb()
   const paymentRef = await addDoc(collection(db, "payments"), {
     ...paymentData,
     invoiceNumber,
@@ -430,12 +389,13 @@ export async function getStats() {
 }
 
 export async function getRecentBookings(limit = 5) {
+  const db = getDb()
   const bookingsQuery = query(collection(db, "bookings"), orderBy("createdAt", "desc"), limit)
   const bookingsSnapshot = await getDocs(bookingsQuery)
   return bookingsSnapshot.docs.map((doc) => ({
     id: doc.id,
     ...doc.data(),
-  })) as Booking[]
+  }))
 }
 
 // Reports
@@ -699,4 +659,115 @@ export function getMockPayments(): Payment[] {
       invoiceNumber: "INV-2023-1005",
     },
   ]
+}
+
+// Get all documents from a collection
+export const getCollection = async (collectionName: string) => {
+  try {
+    const db = getDb()
+    const querySnapshot = await getDocs(collection(db, collectionName))
+    return querySnapshot.docs.map((doc) => ({ id: doc.id, ...doc.data() }))
+  } catch (error) {
+    console.error(`Error getting collection ${collectionName}:`, error)
+    return []
+  }
+}
+
+// Get a document by ID
+export const getDocument = async (collectionName: string, docId: string) => {
+  try {
+    const db = getDb()
+    const docRef = doc(db, collectionName, docId)
+    const docSnap = await getDoc(docRef)
+
+    if (docSnap.exists()) {
+      return { id: docSnap.id, ...docSnap.data() }
+    } else {
+      return null
+    }
+  } catch (error) {
+    console.error(`Error getting document ${docId} from ${collectionName}:`, error)
+    return null
+  }
+}
+
+// Add a new document to a collection
+export const addDocument = async (collectionName: string, data: any) => {
+  try {
+    const db = getDb()
+    const docRef = await addDoc(collection(db, collectionName), data)
+    return { id: docRef.id, ...data }
+  } catch (error) {
+    console.error(`Error adding document to ${collectionName}:`, error)
+    throw error
+  }
+}
+
+// Update a document
+export const updateDocument = async (collectionName: string, docId: string, data: any) => {
+  try {
+    const db = getDb()
+    const docRef = doc(db, collectionName, docId)
+    await updateDoc(docRef, data)
+    return { id: docId, ...data }
+  } catch (error) {
+    console.error(`Error updating document ${docId} in ${collectionName}:`, error)
+    throw error
+  }
+}
+
+// Delete a document
+export const deleteDocument = async (collectionName: string, docId: string) => {
+  try {
+    const db = getDb()
+    await deleteDoc(doc(db, collectionName, docId))
+    return true
+  } catch (error) {
+    console.error(`Error deleting document ${docId} from ${collectionName}:`, error)
+    throw error
+  }
+}
+
+// Query documents
+export const queryDocuments = async (collectionName: string, field: string, operator: any, value: any) => {
+  try {
+    const db = getDb()
+    const q = query(collection(db, collectionName), where(field, operator, value))
+    const querySnapshot = await getDocs(q)
+    return querySnapshot.docs.map((doc) => ({ id: doc.id, ...doc.data() }))
+  } catch (error) {
+    console.error(`Error querying documents in ${collectionName}:`, error)
+    return []
+  }
+}
+
+// Subscribe to a collection
+export const subscribeToCollection = (collectionName: string, callback: (data: any[]) => void) => {
+  try {
+    const db = getDb()
+    return onSnapshot(collection(db, collectionName), (snapshot) => {
+      const data = snapshot.docs.map((doc) => ({ id: doc.id, ...doc.data() }))
+      callback(data)
+    })
+  } catch (error) {
+    console.error(`Error subscribing to collection ${collectionName}:`, error)
+    return () => {}
+  }
+}
+
+// Subscribe to a document
+export const subscribeToDocument = (collectionName: string, docId: string, callback: (data: any) => void) => {
+  try {
+    const db = getDb()
+    return onSnapshot(doc(db, collectionName, docId), (doc) => {
+      if (doc.exists()) {
+        callback({ id: doc.id, ...doc.data() })
+      } else {
+        callback(null)
+      }
+    })
+  } catch (error) {
+    console.error(`Error subscribing to document ${docId} in ${collectionName}:`, error)
+    return () => {}
+  }
 }

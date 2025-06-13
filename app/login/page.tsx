@@ -2,7 +2,7 @@
 
 import type React from "react"
 
-import { useState, useEffect } from "react"
+import { useState } from "react"
 import Link from "next/link"
 import { useRouter } from "next/navigation"
 import { Button } from "@/components/ui/button"
@@ -11,34 +11,26 @@ import { Label } from "@/components/ui/label"
 import { Card, CardContent, CardDescription, CardFooter, CardHeader, CardTitle } from "@/components/ui/card"
 import { Alert, AlertDescription } from "@/components/ui/alert"
 import { signInWithEmailAndPassword } from "firebase/auth"
-import { auth } from "@/lib/firebase"
 import { AlertCircle, Car } from "lucide-react"
 import { useToast } from "@/components/ui/use-toast"
+import { useAuth } from "@/lib/auth-provider"
 
 export default function LoginPage() {
   const router = useRouter()
   const { toast } = useToast()
+  const { auth } = useAuth()
   const [email, setEmail] = useState("")
   const [password, setPassword] = useState("")
   const [loading, setLoading] = useState(false)
   const [error, setError] = useState<string | null>(null)
-  const [firebaseInitialized, setFirebaseInitialized] = useState(true)
-
-  useEffect(() => {
-    // Check if Firebase is properly initialized
-    if (!auth) {
-      setFirebaseInitialized(false)
-      setError("Firebase authentication is not available. Please try again later.")
-    }
-  }, [])
 
   const handleLogin = async (e: React.FormEvent) => {
     e.preventDefault()
     setError(null)
     setLoading(true)
 
-    if (!firebaseInitialized) {
-      setError("Firebase authentication is not available. Please try again later.")
+    if (!auth) {
+      setError("Authentication service is not available. Please try again later.")
       setLoading(false)
       return
     }
@@ -73,7 +65,7 @@ export default function LoginPage() {
       case "auth/network-request-failed":
         return "Network error. Please check your internet connection."
       default:
-        return `An error occurred during login (${errorCode}). Please try again.`
+        return `An error occurred during login (${errorCode || "unknown"}). Please try again.`
     }
   }
 
@@ -134,11 +126,7 @@ export default function LoginPage() {
               </div>
             </CardContent>
             <CardFooter className="flex flex-col space-y-4">
-              <Button
-                type="submit"
-                className="w-full bg-primary hover:bg-primary/90"
-                disabled={loading || !firebaseInitialized}
-              >
+              <Button type="submit" className="w-full bg-primary hover:bg-primary/90" disabled={loading || !auth}>
                 {loading ? "Logging in..." : "Login"}
               </Button>
               <Button type="button" variant="outline" className="w-full" onClick={fillDemoCredentials}>
