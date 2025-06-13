@@ -12,7 +12,11 @@ class DatabaseService {
     
     public function __construct() {
         $firebase = getFirebase();
-        $this->firestore = $firebase['firestore'];
+        if ($firebase && isset($firebase['firestore'])) {
+            $this->firestore = $firebase['firestore'];
+        } else {
+            throw new \Exception("Firestore service is not available");
+        }
     }
     
     /**

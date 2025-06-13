@@ -21,10 +21,13 @@ $renderer = new PhpRenderer(__DIR__ . '/../views');
 $app->getContainer()['renderer'] = $renderer;
 
 // Check if user is authenticated
-$isAuthenticated = function ($request, $handler) {
+$isAuthenticated = function ($request, $handler) use ($app) {
+    $response = $app->getResponseFactory()->createResponse();
+    
     if (!isset($_SESSION['user'])) {
         return $response->withHeader('Location', '/login')->withStatus(302);
     }
+    
     return $handler->handle($request);
 };
 
@@ -44,6 +47,11 @@ $app->post('/login', function ($request, $response) {
     
     $firebase = getFirebase();
     
+    if (!$firebase || !isset($firebase['auth'])) {
+        $_SESSION['error'] = 'Authentication service is not available';
+        return $response->withHeader('Location', '/login')->withStatus(302);
+    }
+    
     try {
         $signInResult = $firebase['auth']->signInWithEmailAndPassword($email, $password);
         $user = $signInResult->data();
@@ -56,9 +64,22 @@ $app->post('/login', function ($request, $response) {
         
         return $response->withHeader('Location', '/dashboard')->withStatus(302);
     } catch (Exception $e) {
-        $_SESSION['error'] = 'Invalid email or password';
+        $_SESSION['error'] = 'Invalid email or password: ' . $e->getMessage();
         return $response->withHeader('Location', '/login')->withStatus(302);
     }
+});
+
+// Demo login for testing
+$app->post('/demo-login', function ($request, $response) {
+    // Set up a demo user session without actual Firebase authentication
+    $_SESSION['user'] = [
+        'uid' => 'demo-user-123',
+        'email' => 'demo@example.com',
+        'displayName' => 'Demo User',
+        'isDemo' => true
+    ];
+    
+    return $response->withHeader('Location', '/dashboard')->withStatus(302);
 });
 
 $app->get('/register', function ($request, $response) {
@@ -73,6 +94,11 @@ $app->post('/register', function ($request, $response) {
     
     $firebase = getFirebase();
     
+    if (!$firebase || !isset($firebase['auth'])) {
+        $_SESSION['error'] = 'Authentication service is not available';
+        return $response->withHeader('Location', '/register')->withStatus(302);
+    }
+    
     try {
         $userProperties = [
             'email' => $email,
@@ -84,12 +110,14 @@ $app->post('/register', function ($request, $response) {
         $createdUser = $firebase['auth']->createUser($userProperties);
         
         // Create user document in Firestore
-        $firebase['firestore']->collection('users')->document($createdUser->uid)->set([
-            'name' => $name,
-            'email' => $email,
-            'role' => 'user',
-            'createdAt' => new \Google\Cloud\Core\Timestamp(new \DateTime()),
-        ]);
+        if (isset($firebase['firestore'])) {
+            $firebase['firestore']->collection('users')->document($createdUser->uid)->set([
+                'name' => $name,
+                'email' => $email,
+                'role' => 'user',
+                'createdAt' => new \Google\Cloud\Core\Timestamp(new \DateTime()),
+            ]);
+        }
         
         $_SESSION['success'] = 'Registration successful. Please log in.';
         return $response->withHeader('Location', '/login')->withStatus(302);

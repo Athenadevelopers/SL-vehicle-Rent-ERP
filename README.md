@@ -40,7 +40,7 @@ This project is licensed under the MIT License.
 
 Let's also create a simple .gitignore file:
 
-```text file=".gitignore"
+\`\`\`text file=".gitignore"
 # dependencies
 /node_modules
 /.pnp

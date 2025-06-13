@@ -1,8 +1,8 @@
 <?php
 require_once __DIR__ . '/../vendor/autoload.php';
 
-use Firebase\Factory;
-use Kreait\Firebase\Factory as FirebaseFactory;
+use Kreait\Firebase\Factory;
+use Kreait\Firebase\ServiceAccount;
 
 // Firebase configuration
 $firebaseConfig = [
@@ -20,15 +20,22 @@ function initFirebase() {
     global $firebaseConfig;
     
     try {
-        $factory = (new FirebaseFactory())
-            ->withServiceAccount(__DIR__ . '/service-account.json')
+        // Create a new Firebase factory
+        $factory = (new Factory)
+            ->withProjectId($firebaseConfig['projectId'])
             ->withDatabaseUri($firebaseConfig['databaseURL']);
+            
+        // If service account file exists, use it
+        if (file_exists(__DIR__ . '/service-account.json')) {
+            $factory = $factory->withServiceAccount(__DIR__ . '/service-account.json');
+        }
         
+        // Initialize services
         $firebase = [
             'auth' => $factory->createAuth(),
-            'firestore' => $factory->createFirestore()->database(),
-            'storage' => $factory->createStorage(),
-            'database' => $factory->createDatabase()
+            'database' => $factory->createDatabase(),
+            'firestore' => $factory->createFirestore(),
+            'storage' => $factory->createStorage()
         ];
         
         return $firebase;
