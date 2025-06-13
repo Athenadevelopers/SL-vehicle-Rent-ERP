@@ -3,7 +3,7 @@
 import type React from "react"
 import { createContext, useContext, useEffect, useState } from "react"
 import { onAuthStateChanged, type User } from "firebase/auth"
-import firebase from "./firebase"
+import { auth } from "./firebase"
 
 interface AuthContextType {
   user: User | null
@@ -28,7 +28,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
 
     try {
       // Check if auth is available
-      if (!firebase.auth) {
+      if (!auth) {
         console.error("Firebase Auth is not available")
         setLoading(false)
         return
@@ -36,7 +36,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
 
       // Set up auth state listener
       const unsubscribe = onAuthStateChanged(
-        firebase.auth,
+        auth,
         (user) => {
           setUser(user)
           setLoading(false)

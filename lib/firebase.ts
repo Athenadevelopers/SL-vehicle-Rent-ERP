@@ -17,28 +17,25 @@ const firebaseConfig = {
   appId: "1:305838510077:web:ba74a58c2d53c8cc6cd394",
 }
 
-// Create a client-side only version of Firebase
-let firebase = {
-  app: null,
-  auth: null,
-  firestore: null,
-  storage: null,
-  database: null,
-}
+// Initialize Firebase only on the client side
+let app = null
+let auth = null
+let firestore = null
+let storage = null
+let database = null
 
 // Initialize Firebase only on the client side
 if (typeof window !== "undefined") {
-  // Initialize Firebase app if it hasn't been initialized yet
-  if (!firebase.app) {
-    const app = getApps().length === 0 ? initializeApp(firebaseConfig) : getApps()[0]
-    firebase = {
-      app,
-      auth: getAuth(app),
-      firestore: getFirestore(app),
-      storage: getStorage(app),
-      database: getDatabase(app),
-    }
+  try {
+    // Initialize Firebase app if it hasn't been initialized yet
+    app = getApps().length === 0 ? initializeApp(firebaseConfig) : getApps()[0]
+    auth = getAuth(app)
+    firestore = getFirestore(app)
+    storage = getStorage(app)
+    database = getDatabase(app)
+  } catch (error) {
+    console.error("Firebase initialization error:", error)
   }
 }
 
-export default firebase
+export { app, auth, firestore, storage, database }

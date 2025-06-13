@@ -13,12 +13,11 @@ import { Alert, AlertDescription } from "@/components/ui/alert"
 import { signInWithEmailAndPassword } from "firebase/auth"
 import { AlertCircle, Car } from "lucide-react"
 import { useToast } from "@/components/ui/use-toast"
-import { useAuth } from "@/lib/auth-provider"
+import { auth } from "@/lib/firebase"
 
 export default function LoginPage() {
   const router = useRouter()
   const { toast } = useToast()
-  const { auth } = useAuth()
   const [email, setEmail] = useState("")
   const [password, setPassword] = useState("")
   const [loading, setLoading] = useState(false)

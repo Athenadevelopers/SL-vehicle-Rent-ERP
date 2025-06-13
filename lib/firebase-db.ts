@@ -1,4 +1,4 @@
-import { rtdb, storage } from "./firebase"
+import { firestore, storage, database } from "./firebase"
 import {
   collection,
   doc,
@@ -15,7 +15,6 @@ import {
 } from "firebase/firestore"
 import { ref, uploadBytes, getDownloadURL } from "firebase/storage"
 import { ref as rtdbRef, get, set } from "firebase/database"
-import firebase from "./firebase"
 
 // Types
 export interface Vehicle {
@@ -87,7 +86,7 @@ export interface Payment {
 
 // Helper function to check if Firestore is available
 const isFirestoreAvailable = () => {
-  if (!firebase.firestore) {
+  if (!firestore) {
     console.error("Firestore is not available")
     return false
   }
@@ -97,27 +96,42 @@ const isFirestoreAvailable = () => {
 // Helper functions for collection and document operations
 const getCollection = async (collectionName: string) => {
   if (!isFirestoreAvailable()) return []
-  const querySnapshot = await getDocs(collection(firebase.firestore, collectionName))
-  return querySnapshot.docs.map((doc) => ({ id: doc.id, ...doc.data() }))
+  try {
+    const querySnapshot = await getDocs(collection(firestore, collectionName))
+    return querySnapshot.docs.map((doc) => ({ id: doc.id, ...doc.data() }))
+  } catch (error) {
+    console.error(`Error getting collection ${collectionName}:`, error)
+    return []
+  }
 }
 
 const subscribeToCollection = (collectionName: string, callback: (data: any[]) => void) => {
-  if (!isFirestoreAvailable()) return
-  const q = collection(firebase.firestore, collectionName)
-  return onSnapshot(q, (querySnapshot) => {
-    const data = querySnapshot.docs.map((doc) => ({ id: doc.id, ...doc.data() }))
-    callback(data)
-  })
+  if (!isFirestoreAvailable()) return () => {}
+  try {
+    const q = collection(firestore, collectionName)
+    return onSnapshot(q, (querySnapshot) => {
+      const data = querySnapshot.docs.map((doc) => ({ id: doc.id, ...doc.data() }))
+      callback(data)
+    })
+  } catch (error) {
+    console.error(`Error subscribing to collection ${collectionName}:`, error)
+    return () => {}
+  }
 }
 
 const getDocument = async (collectionName: string, id: string) => {
   if (!isFirestoreAvailable()) return null
-  const docRef = doc(firebase.firestore, collectionName, id)
-  const docSnapshot = await getDoc(docRef)
-  if (docSnapshot.exists()) {
-    return { id: docSnapshot.id, ...docSnapshot.data() }
+  try {
+    const docRef = doc(firestore, collectionName, id)
+    const docSnapshot = await getDoc(docRef)
+    if (docSnapshot.exists()) {
+      return { id: docSnapshot.id, ...docSnapshot.data() }
+    }
+    return null
+  } catch (error) {
+    console.error(`Error getting document ${id} from ${collectionName}:`, error)
+    return null
   }
-  return null
 }
 
 // Vehicle Management
@@ -135,57 +149,77 @@ export async function getVehicleById(id: string) {
 
 export async function addVehicle(vehicleData: Partial<Vehicle>) {
   if (!isFirestoreAvailable()) return null
-
-  const vehicleRef = await addDoc(collection(firebase.firestore, "vehicles"), {
-    ...vehicleData,
-    createdAt: serverTimestamp(),
-    updatedAt: serverTimestamp(),
-  })
-  return vehicleRef.id
+  try {
+    const vehicleRef = await addDoc(collection(firestore, "vehicles"), {
+      ...vehicleData,
+      createdAt: serverTimestamp(),
+      updatedAt: serverTimestamp(),
+    })
+    return vehicleRef.id
+  } catch (error) {
+    console.error("Error adding vehicle:", error)
+    return null
+  }
 }
 
 export async function updateVehicle(id: string, vehicleData: Partial<Vehicle>) {
   if (!isFirestoreAvailable()) return false
-
-  await updateDoc(doc(firebase.firestore, "vehicles", id), {
-    ...vehicleData,
-    updatedAt: serverTimestamp(),
-  })
-  return true
+  try {
+    await updateDoc(doc(firestore, "vehicles", id), {
+      ...vehicleData,
+      updatedAt: serverTimestamp(),
+    })
+    return true
+  } catch (error) {
+    console.error(`Error updating vehicle ${id}:`, error)
+    return false
+  }
 }
 
 export async function deleteVehicle(id: string) {
   if (!isFirestoreAvailable()) return false
-
-  await deleteDoc(doc(firebase.firestore, "vehicles", id))
-  return true
+  try {
+    await deleteDoc(doc(firestore, "vehicles", id))
+    return true
+  } catch (error) {
+    console.error(`Error deleting vehicle ${id}:`, error)
+    return false
+  }
 }
 
 export async function scheduleVehicleMaintenance(id: string, date: Date) {
   if (!isFirestoreAvailable()) return false
-
-  await updateDoc(doc(firebase.firestore, "vehicles", id), {
-    nextMaintenance: Timestamp.fromDate(date),
-    updatedAt: serverTimestamp(),
-  })
-  return true
+  try {
+    await updateDoc(doc(firestore, "vehicles", id), {
+      nextMaintenance: Timestamp.fromDate(date),
+      updatedAt: serverTimestamp(),
+    })
+    return true
+  } catch (error) {
+    console.error(`Error scheduling maintenance for vehicle ${id}:`, error)
+    return false
+  }
 }
 
 export async function completeVehicleMaintenance(id: string, notes: string) {
   if (!isFirestoreAvailable()) return false
+  try {
+    const now = new Date()
+    const nextMaintenanceDate = new Date()
+    nextMaintenanceDate.setMonth(now.getMonth() + 3) // Schedule next maintenance in 3 months
 
-  const now = new Date()
-  const nextMaintenanceDate = new Date()
-  nextMaintenanceDate.setMonth(now.getMonth() + 3) // Schedule next maintenance in 3 months
-
-  await updateDoc(doc(firebase.firestore, "vehicles", id), {
-    lastMaintenance: Timestamp.fromDate(now),
-    nextMaintenance: Timestamp.fromDate(nextMaintenanceDate),
-    status: "available",
-    maintenanceNotes: notes,
-    updatedAt: serverTimestamp(),
-  })
-  return true
+    await updateDoc(doc(firestore, "vehicles", id), {
+      lastMaintenance: Timestamp.fromDate(now),
+      nextMaintenance: Timestamp.fromDate(nextMaintenanceDate),
+      status: "available",
+      maintenanceNotes: notes,
+      updatedAt: serverTimestamp(),
+    })
+    return true
+  } catch (error) {
+    console.error(`Error completing maintenance for vehicle ${id}:`, error)
+    return false
+  }
 }
 
 // Booking Management
@@ -202,81 +236,97 @@ export async function getBookingById(id: string) {
 }
 
 export async function addBooking(bookingData: Partial<Booking>) {
-  // Generate a booking ID with B prefix and 5 digits
-  const bookingId = "B" + Math.floor(10000 + Math.random() * 90000).toString()
-
   if (!isFirestoreAvailable()) return null
+  try {
+    // Generate a booking ID with B prefix and 5 digits
+    const bookingId = "B" + Math.floor(10000 + Math.random() * 90000).toString()
 
-  const bookingRef = await addDoc(collection(firebase.firestore, "bookings"), {
-    ...bookingData,
-    id: bookingId,
-    createdAt: serverTimestamp(),
-  })
-
-  // Update the vehicle status to rented
-  if (bookingData.vehicleId) {
-    await updateDoc(doc(firebase.firestore, "vehicles", bookingData.vehicleId), {
-      status: "rented",
-      updatedAt: serverTimestamp(),
+    const bookingRef = await addDoc(collection(firestore, "bookings"), {
+      ...bookingData,
+      id: bookingId,
+      createdAt: serverTimestamp(),
     })
-  }
 
-  return bookingRef.id
+    // Update the vehicle status to rented
+    if (bookingData.vehicleId) {
+      await updateDoc(doc(firestore, "vehicles", bookingData.vehicleId), {
+        status: "rented",
+        updatedAt: serverTimestamp(),
+      })
+    }
+
+    return bookingRef.id
+  } catch (error) {
+    console.error("Error adding booking:", error)
+    return null
+  }
 }
 
 export async function updateBooking(id: string, bookingData: Partial<Booking>) {
   if (!isFirestoreAvailable()) return false
-
-  await updateDoc(doc(firebase.firestore, "bookings", id), {
-    ...bookingData,
-    updatedAt: serverTimestamp(),
-  })
-  return true
+  try {
+    await updateDoc(doc(firestore, "bookings", id), {
+      ...bookingData,
+      updatedAt: serverTimestamp(),
+    })
+    return true
+  } catch (error) {
+    console.error(`Error updating booking ${id}:`, error)
+    return false
+  }
 }
 
 export async function updateBookingStatus(id: string, status: Booking["status"]) {
-  const booking = await getBookingById(id)
-
   if (!isFirestoreAvailable()) return false
+  try {
+    const booking = await getBookingById(id)
 
-  await updateDoc(doc(firebase.firestore, "bookings", id), {
-    status,
-    updatedAt: serverTimestamp(),
-  })
-
-  // If completed, make the vehicle available again
-  if (status === "completed" && booking?.vehicleId) {
-    await updateDoc(doc(firebase.firestore, "vehicles", booking.vehicleId), {
-      status: "available",
+    await updateDoc(doc(firestore, "bookings", id), {
+      status,
       updatedAt: serverTimestamp(),
     })
-  }
 
-  // If cancelled and the booking was active, make the vehicle available again
-  if (status === "cancelled" && booking?.status === "active" && booking?.vehicleId) {
-    await updateDoc(doc(firebase.firestore, "vehicles", booking.vehicleId), {
-      status: "available",
-      updatedAt: serverTimestamp(),
-    })
+    // If completed, make the vehicle available again
+    if (status === "completed" && booking?.vehicleId) {
+      await updateDoc(doc(firestore, "vehicles", booking.vehicleId), {
+        status: "available",
+        updatedAt: serverTimestamp(),
+      })
+    }
+
+    // If cancelled and the booking was active, make the vehicle available again
+    if (status === "cancelled" && booking?.status === "active" && booking?.vehicleId) {
+      await updateDoc(doc(firestore, "vehicles", booking.vehicleId), {
+        status: "available",
+        updatedAt: serverTimestamp(),
+      })
+    }
+    return true
+  } catch (error) {
+    console.error(`Error updating booking status ${id}:`, error)
+    return false
   }
-  return true
 }
 
 export async function deleteBooking(id: string) {
-  const booking = await getBookingById(id)
-
   if (!isFirestoreAvailable()) return false
+  try {
+    const booking = await getBookingById(id)
 
-  // If the booking has an active vehicle, make it available again
-  if (booking?.status === "active" && booking?.vehicleId) {
-    await updateDoc(doc(firebase.firestore, "vehicles", booking.vehicleId), {
-      status: "available",
-      updatedAt: serverTimestamp(),
-    })
+    // If the booking has an active vehicle, make it available again
+    if (booking?.status === "active" && booking?.vehicleId) {
+      await updateDoc(doc(firestore, "vehicles", booking.vehicleId), {
+        status: "available",
+        updatedAt: serverTimestamp(),
+      })
+    }
+
+    await deleteDoc(doc(firestore, "bookings", id))
+    return true
+  } catch (error) {
+    console.error(`Error deleting booking ${id}:`, error)
+    return false
   }
-
-  await deleteDoc(doc(firebase.firestore, "bookings", id))
-  return true
 }
 
 // Customer Management
@@ -294,30 +344,42 @@ export async function getCustomerById(id: string) {
 
 export async function addCustomer(customerData: Partial<Customer>) {
   if (!isFirestoreAvailable()) return null
-
-  const customerRef = await addDoc(collection(firebase.firestore, "customers"), {
-    ...customerData,
-    bookings: [],
-    createdAt: serverTimestamp(),
-  })
-  return customerRef.id
+  try {
+    const customerRef = await addDoc(collection(firestore, "customers"), {
+      ...customerData,
+      bookings: [],
+      createdAt: serverTimestamp(),
+    })
+    return customerRef.id
+  } catch (error) {
+    console.error("Error adding customer:", error)
+    return null
+  }
 }
 
 export async function updateCustomer(id: string, customerData: Partial<Customer>) {
   if (!isFirestoreAvailable()) return false
-
-  await updateDoc(doc(firebase.firestore, "customers", id), {
-    ...customerData,
-    updatedAt: serverTimestamp(),
-  })
-  return true
+  try {
+    await updateDoc(doc(firestore, "customers", id), {
+      ...customerData,
+      updatedAt: serverTimestamp(),
+    })
+    return true
+  } catch (error) {
+    console.error(`Error updating customer ${id}:`, error)
+    return false
+  }
 }
 
 export async function deleteCustomer(id: string) {
   if (!isFirestoreAvailable()) return false
-
-  await deleteDoc(doc(firebase.firestore, "customers", id))
-  return true
+  try {
+    await deleteDoc(doc(firestore, "customers", id))
+    return true
+  } catch (error) {
+    console.error(`Error deleting customer ${id}:`, error)
+    return false
+  }
 }
 
 // Payment Management
@@ -330,61 +392,93 @@ export function subscribeToPayments(callback: (payments: any[]) => void) {
 }
 
 export async function addPayment(paymentData: Partial<Payment>) {
-  // Generate an invoice number with INV prefix, year, and 4 digits
-  const year = new Date().getFullYear()
-  const invoiceNumber = `INV-${year}-${Math.floor(1000 + Math.random() * 9000).toString()}`
-
   if (!isFirestoreAvailable()) return null
+  try {
+    // Generate an invoice number with INV prefix, year, and 4 digits
+    const year = new Date().getFullYear()
+    const invoiceNumber = `INV-${year}-${Math.floor(1000 + Math.random() * 9000).toString()}`
 
-  const paymentRef = await addDoc(collection(firebase.firestore, "payments"), {
-    ...paymentData,
-    invoiceNumber,
-    date: paymentData.date || serverTimestamp(),
-    status: paymentData.status || "completed",
-  })
+    const paymentRef = await addDoc(collection(firestore, "payments"), {
+      ...paymentData,
+      invoiceNumber,
+      date: paymentData.date || serverTimestamp(),
+      status: paymentData.status || "completed",
+    })
 
-  // If this is for a booking, update the booking's payment status
-  if (paymentData.bookingId) {
-    const booking = await getBookingById(paymentData.bookingId)
-    if (booking) {
-      const totalPaid = (booking.advanceAmount || 0) + (paymentData.amount || 0)
-      const newPaymentStatus = totalPaid >= booking.totalAmount ? "paid" : "partial"
+    // If this is for a booking, update the booking's payment status
+    if (paymentData.bookingId) {
+      const booking = await getBookingById(paymentData.bookingId)
+      if (booking) {
+        const totalPaid = (booking.advanceAmount || 0) + (paymentData.amount || 0)
+        const newPaymentStatus = totalPaid >= booking.totalAmount ? "paid" : "partial"
 
-      await updateDoc(doc(firebase.firestore, "bookings", paymentData.bookingId), {
-        paymentStatus: newPaymentStatus,
-        advanceAmount: totalPaid,
-        balanceAmount: booking.totalAmount - totalPaid,
-        updatedAt: serverTimestamp(),
-      })
+        await updateDoc(doc(firestore, "bookings", paymentData.bookingId), {
+          paymentStatus: newPaymentStatus,
+          advanceAmount: totalPaid,
+          balanceAmount: booking.totalAmount - totalPaid,
+          updatedAt: serverTimestamp(),
+        })
+      }
     }
-  }
 
-  return paymentRef.id
+    return paymentRef.id
+  } catch (error) {
+    console.error("Error adding payment:", error)
+    return null
+  }
 }
 
 // File Upload
 export async function uploadFile(file: File, path: string) {
-  const storageRef = ref(storage, path)
-  await uploadBytes(storageRef, file)
-  return getDownloadURL(storageRef)
+  if (!storage) {
+    console.error("Storage is not available")
+    return null
+  }
+  try {
+    const storageRef = ref(storage, path)
+    await uploadBytes(storageRef, file)
+    return getDownloadURL(storageRef)
+  } catch (error) {
+    console.error(`Error uploading file to ${path}:`, error)
+    return null
+  }
 }
 
 // Real-time Fleet Tracking
 export async function updateVehicleLocation(vehicleId: string, location: { lat: number; lng: number }) {
-  const locationRef = rtdbRef(rtdb, `vehicleLocations/${vehicleId}`)
-  await set(locationRef, {
-    ...location,
-    timestamp: Date.now(),
-  })
+  if (!database) {
+    console.error("Realtime Database is not available")
+    return false
+  }
+  try {
+    const locationRef = rtdbRef(database, `vehicleLocations/${vehicleId}`)
+    await set(locationRef, {
+      ...location,
+      timestamp: Date.now(),
+    })
+    return true
+  } catch (error) {
+    console.error(`Error updating vehicle location for ${vehicleId}:`, error)
+    return false
+  }
 }
 
 export async function getVehicleLocation(vehicleId: string) {
-  const locationRef = rtdbRef(rtdb, `vehicleLocations/${vehicleId}`)
-  const snapshot = await get(locationRef)
-  if (snapshot.exists()) {
-    return snapshot.val()
+  if (!database) {
+    console.error("Realtime Database is not available")
+    return null
   }
-  return null
+  try {
+    const locationRef = rtdbRef(database, `vehicleLocations/${vehicleId}`)
+    const snapshot = await get(locationRef)
+    if (snapshot.exists()) {
+      return snapshot.val()
+    }
+    return null
+  } catch (error) {
+    console.error(`Error getting vehicle location for ${vehicleId}:`, error)
+    return null
+  }
 }
 
 // Dashboard Stats
@@ -436,13 +530,17 @@ export async function getStats() {
 
 export async function getRecentBookings(limit = 5) {
   if (!isFirestoreAvailable()) return []
-
-  const bookingsQuery = query(collection(firebase.firestore, "bookings"), orderBy("createdAt", "desc"), limit)
-  const bookingsSnapshot = await getDocs(bookingsQuery)
-  return bookingsSnapshot.docs.map((doc) => ({
-    id: doc.id,
-    ...doc.data(),
-  }))
+  try {
+    const bookingsQuery = query(collection(firestore, "bookings"), orderBy("createdAt", "desc"), limit)
+    const bookingsSnapshot = await getDocs(bookingsQuery)
+    return bookingsSnapshot.docs.map((doc) => ({
+      id: doc.id,
+      ...doc.data(),
+    }))
+  } catch (error) {
+    console.error("Error getting recent bookings:", error)
+    return []
+  }
 }
 
 // Reports
