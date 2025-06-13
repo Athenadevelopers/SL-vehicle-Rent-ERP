@@ -1,7 +1,6 @@
 "use client"
 
 import type React from "react"
-
 import { createContext, useContext, useEffect, useState } from "react"
 import { onAuthStateChanged, type User } from "firebase/auth"
 import { auth } from "./firebase"
@@ -21,12 +20,25 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
   const [loading, setLoading] = useState(true)
 
   useEffect(() => {
-    const unsubscribe = onAuthStateChanged(auth, (user) => {
-      setUser(user)
-      setLoading(false)
-    })
+    // Only run auth state listener if auth is initialized
+    if (typeof window !== "undefined" && auth) {
+      const unsubscribe = onAuthStateChanged(
+        auth,
+        (user) => {
+          setUser(user)
+          setLoading(false)
+        },
+        (error) => {
+          console.error("Auth state change error:", error)
+          setLoading(false)
+        },
+      )
 
-    return () => unsubscribe()
+      return () => unsubscribe()
+    } else {
+      // If auth is not available, set loading to false
+      setLoading(false)
+    }
   }, [])
 
   return <AuthContext.Provider value={{ user, loading }}>{children}</AuthContext.Provider>

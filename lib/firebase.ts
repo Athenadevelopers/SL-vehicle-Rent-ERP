@@ -16,10 +16,29 @@ const firebaseConfig = {
 }
 
 // Initialize Firebase
-const app = getApps().length === 0 ? initializeApp(firebaseConfig) : getApps()[0]
-const auth = getAuth(app)
-const db = getFirestore(app)
-const storage = getStorage(app)
-const rtdb = getDatabase(app)
+let app
+let auth
+let db
+let storage
+let rtdb
+
+// Check if we're in the browser environment
+if (typeof window !== "undefined") {
+  try {
+    // Initialize Firebase only if it hasn't been initialized yet
+    app = getApps().length === 0 ? initializeApp(firebaseConfig) : getApps()[0]
+
+    // Initialize services
+    auth = getAuth(app)
+    db = getFirestore(app)
+    storage = getStorage(app)
+    rtdb = getDatabase(app)
+  } catch (error) {
+    console.error("Firebase initialization error:", error)
+  }
+} else {
+  // Server-side initialization if needed
+  app = getApps().length === 0 ? initializeApp(firebaseConfig) : getApps()[0]
+}
 
 export { app, auth, db, storage, rtdb }
