@@ -12,11 +12,10 @@ import {
   serverTimestamp,
   onSnapshot,
   Timestamp,
-  where,
 } from "firebase/firestore"
 import { ref, uploadBytes, getDownloadURL } from "firebase/storage"
 import { ref as rtdbRef, get, set } from "firebase/database"
-import { getFirebaseFirestore } from "./firebase"
+import firebase from "./firebase"
 
 // Types
 export interface Vehicle {
@@ -86,13 +85,39 @@ export interface Payment {
   invoiceNumber: string
 }
 
-// Helper function to get Firestore instance
-const getDb = () => {
-  const db = getFirebaseFirestore()
-  if (!db) {
-    throw new Error("Firestore is not initialized")
+// Helper function to check if Firestore is available
+const isFirestoreAvailable = () => {
+  if (!firebase.firestore) {
+    console.error("Firestore is not available")
+    return false
   }
-  return db
+  return true
+}
+
+// Helper functions for collection and document operations
+const getCollection = async (collectionName: string) => {
+  if (!isFirestoreAvailable()) return []
+  const querySnapshot = await getDocs(collection(firebase.firestore, collectionName))
+  return querySnapshot.docs.map((doc) => ({ id: doc.id, ...doc.data() }))
+}
+
+const subscribeToCollection = (collectionName: string, callback: (data: any[]) => void) => {
+  if (!isFirestoreAvailable()) return
+  const q = collection(firebase.firestore, collectionName)
+  return onSnapshot(q, (querySnapshot) => {
+    const data = querySnapshot.docs.map((doc) => ({ id: doc.id, ...doc.data() }))
+    callback(data)
+  })
+}
+
+const getDocument = async (collectionName: string, id: string) => {
+  if (!isFirestoreAvailable()) return null
+  const docRef = doc(firebase.firestore, collectionName, id)
+  const docSnapshot = await getDoc(docRef)
+  if (docSnapshot.exists()) {
+    return { id: docSnapshot.id, ...docSnapshot.data() }
+  }
+  return null
 }
 
 // Vehicle Management
@@ -109,8 +134,9 @@ export async function getVehicleById(id: string) {
 }
 
 export async function addVehicle(vehicleData: Partial<Vehicle>) {
-  const db = getDb()
-  const vehicleRef = await addDoc(collection(db, "vehicles"), {
+  if (!isFirestoreAvailable()) return null
+
+  const vehicleRef = await addDoc(collection(firebase.firestore, "vehicles"), {
     ...vehicleData,
     createdAt: serverTimestamp(),
     updatedAt: serverTimestamp(),
@@ -119,39 +145,47 @@ export async function addVehicle(vehicleData: Partial<Vehicle>) {
 }
 
 export async function updateVehicle(id: string, vehicleData: Partial<Vehicle>) {
-  const db = getDb()
-  await updateDoc(doc(db, "vehicles", id), {
+  if (!isFirestoreAvailable()) return false
+
+  await updateDoc(doc(firebase.firestore, "vehicles", id), {
     ...vehicleData,
     updatedAt: serverTimestamp(),
   })
+  return true
 }
 
 export async function deleteVehicle(id: string) {
-  const db = getDb()
-  await deleteDoc(doc(db, "vehicles", id))
+  if (!isFirestoreAvailable()) return false
+
+  await deleteDoc(doc(firebase.firestore, "vehicles", id))
+  return true
 }
 
 export async function scheduleVehicleMaintenance(id: string, date: Date) {
-  const db = getDb()
-  await updateDoc(doc(db, "vehicles", id), {
+  if (!isFirestoreAvailable()) return false
+
+  await updateDoc(doc(firebase.firestore, "vehicles", id), {
     nextMaintenance: Timestamp.fromDate(date),
     updatedAt: serverTimestamp(),
   })
+  return true
 }
 
 export async function completeVehicleMaintenance(id: string, notes: string) {
+  if (!isFirestoreAvailable()) return false
+
   const now = new Date()
   const nextMaintenanceDate = new Date()
   nextMaintenanceDate.setMonth(now.getMonth() + 3) // Schedule next maintenance in 3 months
 
-  const db = getDb()
-  await updateDoc(doc(db, "vehicles", id), {
+  await updateDoc(doc(firebase.firestore, "vehicles", id), {
     lastMaintenance: Timestamp.fromDate(now),
     nextMaintenance: Timestamp.fromDate(nextMaintenanceDate),
     status: "available",
     maintenanceNotes: notes,
     updatedAt: serverTimestamp(),
   })
+  return true
 }
 
 // Booking Management
@@ -171,8 +205,9 @@ export async function addBooking(bookingData: Partial<Booking>) {
   // Generate a booking ID with B prefix and 5 digits
   const bookingId = "B" + Math.floor(10000 + Math.random() * 90000).toString()
 
-  const db = getDb()
-  const bookingRef = await addDoc(collection(db, "bookings"), {
+  if (!isFirestoreAvailable()) return null
+
+  const bookingRef = await addDoc(collection(firebase.firestore, "bookings"), {
     ...bookingData,
     id: bookingId,
     createdAt: serverTimestamp(),
@@ -180,7 +215,7 @@ export async function addBooking(bookingData: Partial<Booking>) {
 
   // Update the vehicle status to rented
   if (bookingData.vehicleId) {
-    await updateDoc(doc(db, "vehicles", bookingData.vehicleId), {
+    await updateDoc(doc(firebase.firestore, "vehicles", bookingData.vehicleId), {
       status: "rented",
       updatedAt: serverTimestamp(),
     })
@@ -190,25 +225,28 @@ export async function addBooking(bookingData: Partial<Booking>) {
 }
 
 export async function updateBooking(id: string, bookingData: Partial<Booking>) {
-  const db = getDb()
-  await updateDoc(doc(db, "bookings", id), {
+  if (!isFirestoreAvailable()) return false
+
+  await updateDoc(doc(firebase.firestore, "bookings", id), {
     ...bookingData,
     updatedAt: serverTimestamp(),
   })
+  return true
 }
 
 export async function updateBookingStatus(id: string, status: Booking["status"]) {
   const booking = await getBookingById(id)
 
-  const db = getDb()
-  await updateDoc(doc(db, "bookings", id), {
+  if (!isFirestoreAvailable()) return false
+
+  await updateDoc(doc(firebase.firestore, "bookings", id), {
     status,
     updatedAt: serverTimestamp(),
   })
 
   // If completed, make the vehicle available again
   if (status === "completed" && booking?.vehicleId) {
-    await updateDoc(doc(db, "vehicles", booking.vehicleId), {
+    await updateDoc(doc(firebase.firestore, "vehicles", booking.vehicleId), {
       status: "available",
       updatedAt: serverTimestamp(),
     })
@@ -216,27 +254,29 @@ export async function updateBookingStatus(id: string, status: Booking["status"])
 
   // If cancelled and the booking was active, make the vehicle available again
   if (status === "cancelled" && booking?.status === "active" && booking?.vehicleId) {
-    await updateDoc(doc(db, "vehicles", booking.vehicleId), {
+    await updateDoc(doc(firebase.firestore, "vehicles", booking.vehicleId), {
       status: "available",
       updatedAt: serverTimestamp(),
     })
   }
+  return true
 }
 
 export async function deleteBooking(id: string) {
   const booking = await getBookingById(id)
 
+  if (!isFirestoreAvailable()) return false
+
   // If the booking has an active vehicle, make it available again
   if (booking?.status === "active" && booking?.vehicleId) {
-    const db = getDb()
-    await updateDoc(doc(db, "vehicles", booking.vehicleId), {
+    await updateDoc(doc(firebase.firestore, "vehicles", booking.vehicleId), {
       status: "available",
       updatedAt: serverTimestamp(),
     })
   }
 
-  const db = getDb()
-  await deleteDoc(doc(db, "bookings", id))
+  await deleteDoc(doc(firebase.firestore, "bookings", id))
+  return true
 }
 
 // Customer Management
@@ -253,8 +293,9 @@ export async function getCustomerById(id: string) {
 }
 
 export async function addCustomer(customerData: Partial<Customer>) {
-  const db = getDb()
-  const customerRef = await addDoc(collection(db, "customers"), {
+  if (!isFirestoreAvailable()) return null
+
+  const customerRef = await addDoc(collection(firebase.firestore, "customers"), {
     ...customerData,
     bookings: [],
     createdAt: serverTimestamp(),
@@ -263,16 +304,20 @@ export async function addCustomer(customerData: Partial<Customer>) {
 }
 
 export async function updateCustomer(id: string, customerData: Partial<Customer>) {
-  const db = getDb()
-  await updateDoc(doc(db, "customers", id), {
+  if (!isFirestoreAvailable()) return false
+
+  await updateDoc(doc(firebase.firestore, "customers", id), {
     ...customerData,
     updatedAt: serverTimestamp(),
   })
+  return true
 }
 
 export async function deleteCustomer(id: string) {
-  const db = getDb()
-  await deleteDoc(doc(db, "customers", id))
+  if (!isFirestoreAvailable()) return false
+
+  await deleteDoc(doc(firebase.firestore, "customers", id))
+  return true
 }
 
 // Payment Management
@@ -289,8 +334,9 @@ export async function addPayment(paymentData: Partial<Payment>) {
   const year = new Date().getFullYear()
   const invoiceNumber = `INV-${year}-${Math.floor(1000 + Math.random() * 9000).toString()}`
 
-  const db = getDb()
-  const paymentRef = await addDoc(collection(db, "payments"), {
+  if (!isFirestoreAvailable()) return null
+
+  const paymentRef = await addDoc(collection(firebase.firestore, "payments"), {
     ...paymentData,
     invoiceNumber,
     date: paymentData.date || serverTimestamp(),
@@ -304,7 +350,7 @@ export async function addPayment(paymentData: Partial<Payment>) {
       const totalPaid = (booking.advanceAmount || 0) + (paymentData.amount || 0)
       const newPaymentStatus = totalPaid >= booking.totalAmount ? "paid" : "partial"
 
-      await updateDoc(doc(db, "bookings", paymentData.bookingId), {
+      await updateDoc(doc(firebase.firestore, "bookings", paymentData.bookingId), {
         paymentStatus: newPaymentStatus,
         advanceAmount: totalPaid,
         balanceAmount: booking.totalAmount - totalPaid,
@@ -389,8 +435,9 @@ export async function getStats() {
 }
 
 export async function getRecentBookings(limit = 5) {
-  const db = getDb()
-  const bookingsQuery = query(collection(db, "bookings"), orderBy("createdAt", "desc"), limit)
+  if (!isFirestoreAvailable()) return []
+
+  const bookingsQuery = query(collection(firebase.firestore, "bookings"), orderBy("createdAt", "desc"), limit)
   const bookingsSnapshot = await getDocs(bookingsQuery)
   return bookingsSnapshot.docs.map((doc) => ({
     id: doc.id,
@@ -659,115 +706,4 @@ export function getMockPayments(): Payment[] {
       invoiceNumber: "INV-2023-1005",
     },
   ]
-}
-
-// Get all documents from a collection
-export const getCollection = async (collectionName: string) => {
-  try {
-    const db = getDb()
-    const querySnapshot = await getDocs(collection(db, collectionName))
-    return querySnapshot.docs.map((doc) => ({ id: doc.id, ...doc.data() }))
-  } catch (error) {
-    console.error(`Error getting collection ${collectionName}:`, error)
-    return []
-  }
-}
-
-// Get a document by ID
-export const getDocument = async (collectionName: string, docId: string) => {
-  try {
-    const db = getDb()
-    const docRef = doc(db, collectionName, docId)
-    const docSnap = await getDoc(docRef)
-
-    if (docSnap.exists()) {
-      return { id: docSnap.id, ...docSnap.data() }
-    } else {
-      return null
-    }
-  } catch (error) {
-    console.error(`Error getting document ${docId} from ${collectionName}:`, error)
-    return null
-  }
-}
-
-// Add a new document to a collection
-export const addDocument = async (collectionName: string, data: any) => {
-  try {
-    const db = getDb()
-    const docRef = await addDoc(collection(db, collectionName), data)
-    return { id: docRef.id, ...data }
-  } catch (error) {
-    console.error(`Error adding document to ${collectionName}:`, error)
-    throw error
-  }
-}
-
-// Update a document
-export const updateDocument = async (collectionName: string, docId: string, data: any) => {
-  try {
-    const db = getDb()
-    const docRef = doc(db, collectionName, docId)
-    await updateDoc(docRef, data)
-    return { id: docId, ...data }
-  } catch (error) {
-    console.error(`Error updating document ${docId} in ${collectionName}:`, error)
-    throw error
-  }
-}
-
-// Delete a document
-export const deleteDocument = async (collectionName: string, docId: string) => {
-  try {
-    const db = getDb()
-    await deleteDoc(doc(db, collectionName, docId))
-    return true
-  } catch (error) {
-    console.error(`Error deleting document ${docId} from ${collectionName}:`, error)
-    throw error
-  }
-}
-
-// Query documents
-export const queryDocuments = async (collectionName: string, field: string, operator: any, value: any) => {
-  try {
-    const db = getDb()
-    const q = query(collection(db, collectionName), where(field, operator, value))
-    const querySnapshot = await getDocs(q)
-    return querySnapshot.docs.map((doc) => ({ id: doc.id, ...doc.data() }))
-  } catch (error) {
-    console.error(`Error querying documents in ${collectionName}:`, error)
-    return []
-  }
-}
-
-// Subscribe to a collection
-export const subscribeToCollection = (collectionName: string, callback: (data: any[]) => void) => {
-  try {
-    const db = getDb()
-    return onSnapshot(collection(db, collectionName), (snapshot) => {
-      const data = snapshot.docs.map((doc) => ({ id: doc.id, ...doc.data() }))
-      callback(data)
-    })
-  } catch (error) {
-    console.error(`Error subscribing to collection ${collectionName}:`, error)
-    return () => {}
-  }
-}
-
-// Subscribe to a document
-export const subscribeToDocument = (collectionName: string, docId: string, callback: (data: any) => void) => {
-  try {
-    const db = getDb()
-    return onSnapshot(doc(db, collectionName, docId), (doc) => {
-      if (doc.exists()) {
-        callback({ id: doc.id, ...doc.data() })
-      } else {
-        callback(null)
-      }
-    })
-  } catch (error) {
-    console.error(`Error subscribing to document ${docId} in ${collectionName}:`, error)
-    return () => {}
-  }
 }

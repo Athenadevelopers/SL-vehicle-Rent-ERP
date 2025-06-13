@@ -1,5 +1,10 @@
 // Import Firebase core functionality
 import { initializeApp, getApps } from "firebase/app"
+// Import Firebase services directly
+import { getAuth } from "firebase/auth"
+import { getFirestore } from "firebase/firestore"
+import { getStorage } from "firebase/storage"
+import { getDatabase } from "firebase/database"
 
 // Firebase configuration
 const firebaseConfig = {
@@ -12,43 +17,28 @@ const firebaseConfig = {
   appId: "1:305838510077:web:ba74a58c2d53c8cc6cd394",
 }
 
-// Initialize Firebase app instance
-const app = getApps().length === 0 ? initializeApp(firebaseConfig) : getApps()[0]
-
-export { app }
-
-// Export a function to get auth that ensures auth is only initialized when called
-export function getFirebaseAuth() {
-  if (typeof window !== "undefined") {
-    const { getAuth } = require("firebase/auth")
-    return getAuth(app)
-  }
-  return null
+// Create a client-side only version of Firebase
+let firebase = {
+  app: null,
+  auth: null,
+  firestore: null,
+  storage: null,
+  database: null,
 }
 
-// Export a function to get firestore that ensures firestore is only initialized when called
-export function getFirebaseFirestore() {
-  if (typeof window !== "undefined") {
-    const { getFirestore } = require("firebase/firestore")
-    return getFirestore(app)
+// Initialize Firebase only on the client side
+if (typeof window !== "undefined") {
+  // Initialize Firebase app if it hasn't been initialized yet
+  if (!firebase.app) {
+    const app = getApps().length === 0 ? initializeApp(firebaseConfig) : getApps()[0]
+    firebase = {
+      app,
+      auth: getAuth(app),
+      firestore: getFirestore(app),
+      storage: getStorage(app),
+      database: getDatabase(app),
+    }
   }
-  return null
 }
 
-// Export a function to get storage that ensures storage is only initialized when called
-export function getFirebaseStorage() {
-  if (typeof window !== "undefined") {
-    const { getStorage } = require("firebase/storage")
-    return getStorage(app)
-  }
-  return null
-}
-
-// Export a function to get realtime database that ensures rtdb is only initialized when called
-export function getFirebaseDatabase() {
-  if (typeof window !== "undefined") {
-    const { getDatabase } = require("firebase/database")
-    return getDatabase(app)
-  }
-  return null
-}
+export default firebase
